@@ -234,6 +234,17 @@ module TokenSwapGov {
         });
     }
 
+    spec genesis_initialize {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+
+        include TokenSwapConfig::AbortsIfAdmin{signer: account};
+        aborts_if Signer::address_of(account) != Token::SPEC_TOKEN_TEST_ADDRESS();
+
+        ensures exists<GovTreasury<PoolTypeCommunity>>(Signer::address_of(account));
+        ensures exists<GovTreasury<PoolTypeIDO>>(Signer::address_of(account));
+    }
+
     /// dispatch to acceptor from governance treasury pool
     public fun dispatch<PoolType: store>(account: &signer, acceptor: address, amount: u128) acquires GovTreasuryV2 ,GovTreasuryEvent{
         TokenSwapConfig::assert_global_freeze();
@@ -474,6 +485,18 @@ module TokenSwapGov {
         let amount = (( now_timestamp - treasury.locked_start_timestamp  ) as u128) * second_release;
   
         Token::value<STAR::STAR>(&treasury.linear_treasury) - (treasury.linear_total - amount)
+    }
+
+    spec get_can_withdraw_of_linear_treasury {
+        pragma verify = false;
+        pragma aborts_if_is_strict = true;
+
+        aborts_if !exists<GovTreasuryV2<PoolType>>(Token::SPEC_TOKEN_TEST_ADDRESS());
+        let treasury = global<GovTreasuryV2<PoolType>>(Token::SPEC_TOKEN_TEST_ADDRESS());
+
+        let now_timestamp = Timestamp::now_seconds();
+        let second_release =  treasury.linear_total / (treasury.locked_total_timestamp);
+        let amount = (( now_timestamp - treasury.locked_start_timestamp  )) * second_release;
     }
 
     /// Get balance of treasury

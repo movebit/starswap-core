@@ -359,6 +359,11 @@ module TokenSwapConfig {
     public fun admin_address(): address {
         @SwapAdmin
     }
+    
+    spec schema AbortsIfAdmin {
+        signer: signer;
+        aborts_if Signer::address_of(signer) != admin_address();
+    }
 
     public fun fee_address(): address {
         @SwapFeeAdmin
@@ -370,6 +375,10 @@ module TokenSwapConfig {
 
     public fun assert_global_freeze() {
         assert!(!get_global_freeze_switch(), Errors::invalid_state(ERROR_GLOBAL_FREEZE));
+    }
+
+    spec assert_global_freeze {
+        pragma opaque = true;
     }
 
     public fun get_swap_fee_switch(): bool {

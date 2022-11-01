@@ -306,6 +306,20 @@ module TokenSwapSyrup {
         );
     }
 
+    spec add_pool_v2 {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+
+        let account = Signer::address_of(signer);
+        include TokenSwapConfig::AbortsIfAdmin;
+        aborts_if account != Token::SPEC_TOKEN_TEST_ADDRESS();
+
+        aborts_if exists<Syrup<TokenT>>(account);
+        ensures exists<Syrup<TokenT>>(account);
+        ensures exists<SyrupExtInfoV2<TokenT>>(account);
+
+    }
+
     /// Set release per second for syrup pool
     public fun set_pool_release_per_second(
         signer: &signer,
@@ -552,6 +566,13 @@ module TokenSwapSyrup {
                 pledge_time: pledge_time_sec,
                 multiplier: stepwise_multiplier,
             });
+    }
+
+    spec stake {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        aborts_if !(pledge_time_sec > 0);
     }
 
     /// Unstake from list

@@ -165,6 +165,17 @@ module TokenSwap {
         };
     }
 
+    spec maybe_init_event_handle {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+
+        include TokenSwapConfig::AbortsIfAdmin;
+
+        aborts_if !exists<TokenSwapEventHandle>(Signer::address_of(signer)) && exists<TokenSwapEventHandle>(Signer::address_of(signer));
+        ensures exists<TokenSwapEventHandle>(Signer::address_of(signer));
+
+    }
+
     /// Check if swap pair exists
     public fun swap_pair_exists<X: copy + drop + store, Y: copy + drop + store>(): bool {
         let order = compare_token<X, Y>();
@@ -201,6 +212,13 @@ module TokenSwap {
         let mint_capability = Token::remove_mint_capability<LiquidityToken<X, Y>>(signer);
         let burn_capability = Token::remove_burn_capability<LiquidityToken<X, Y>>(signer);
         move_to(signer, LiquidityTokenCapability{ mint: mint_capability, burn: burn_capability });
+    }
+
+    spec register_liquidity_token {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        include TokenSwapConfig::AbortsIfAdmin;
+        include Token::RegisterTokenAbortsIf<LiquidityToken<X, Y>>{account: signer, precision: LIQUIDITY_TOKEN_SCALE};
     }
 
     fun make_token_pair<X: copy + drop + store, Y: copy + drop + store>(signer: &signer): TokenPair<X, Y> {
@@ -268,6 +286,13 @@ module TokenSwap {
         mint_token
     }
 
+    spec mint {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+        aborts_if !exists<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        aborts_if !exists<LiquidityTokenCapability<X, Y>>(TokenSwapConfig::admin_address());
+    }
+
 
     public fun burn<X: copy + drop + store, Y: copy + drop + store>(
         to_burn: Token::Token<LiquidityToken<X, Y>>,
@@ -291,12 +316,38 @@ module TokenSwap {
         (x_token, y_token)
     }
 
+    spec burn {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if !exists<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        let token_pair = global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        let total_supply = global<Token::TokenInfo<LiquidityToken<X, Y>>>(Token::SPEC_TOKEN_TEST_ADDRESS()).total_value;
+
+        let to_burn_value = to_burn.value;
+        let x_reserve = token_pair.token_x_reserve.value;
+        let y_reserve = token_pair.token_y_reserve.value;
+        let x = to_burn_value * x_reserve / total_supply;
+        let y = to_burn_value * y_reserve / total_supply;
+
+        aborts_if token_pair.token_x_reserve.value < x;
+        aborts_if token_pair.token_y_reserve.value < y;
+    }
+
 
     fun burn_liquidity<X: copy + drop + store, Y: copy + drop + store>(
         to_burn: Token::Token<LiquidityToken<X, Y>>
     ) acquires LiquidityTokenCapability {
         let liquidity_cap = borrow_global<LiquidityTokenCapability<X, Y>>(TokenSwapConfig::admin_address());
         Token::burn_with_capability<LiquidityToken<X, Y>>(&liquidity_cap.burn, to_burn);
+    }
+
+    spec burn_liquidity {
+        pragma verify;
+        pragma aborts_if_is_strict;
+
+        aborts_if !exists<LiquidityTokenCapability<X, Y>>(TokenSwapConfig::admin_address());
+        aborts_if Token::spec_abstract_total_value<LiquidityToken<X, Y>>() - to_burn.value < 0;
     }
 
     /// Get reserves of a token pair.
@@ -309,6 +360,16 @@ module TokenSwap {
         (x_reserve, y_reserve)
     }
 
+    spec get_reserves {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+
+        aborts_if !exists<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        let token_pair = global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        ensures result_1 == token_pair.token_x_reserve.value;
+        ensures result_2 == token_pair.token_y_reserve.value;
+    }
+
     /// Get cumulative info of a token pair.
     /// The order of type args should be sorted.
     public fun get_cumulative_info<X: copy + drop + store, Y: copy + drop + store>(): (U256, U256, u64) acquires TokenSwapPair {
@@ -317,6 +378,17 @@ module TokenSwap {
         let last_price_y_cumulative = *&token_pair.last_price_y_cumulative;
         let last_block_timestamp = token_pair.last_block_timestamp;
         (last_price_x_cumulative, last_price_y_cumulative, last_block_timestamp)
+    }
+
+    spec get_cumulative_info {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+
+        aborts_if !exists<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        let token_pair = global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        ensures result_1 == token_pair.last_price_x_cumulative;
+        ensures result_2 == token_pair.last_price_y_cumulative;
+        ensures result_3 == token_pair.last_block_timestamp;
     }
 
     public fun swap<X: copy + drop + store,
@@ -368,6 +440,21 @@ module TokenSwap {
         (x_swapped, y_swapped, x_swap_fee, y_swap_fee)
     }
 
+    spec swap {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if x_in.value <= 0 && y_in.value <= 0;
+        aborts_if !exists<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        let token_pair = global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address());
+        aborts_if token_pair.token_x_reserve.value < x_out;
+        aborts_if token_pair.token_y_reserve.value < y_out;
+
+        ensures global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address()).token_x_reserve.value == old(global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address()).token_x_reserve.value) + x_in.value;
+        ensures global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address()).token_y_reserve.value == old(global<TokenSwapPair<X, Y>>(TokenSwapConfig::admin_address()).token_y_reserve.value) + y_in.value;
+
+    }
+
     /// Emit token pair register event
     fun emit_token_pair_register_event<X: copy + drop + store, Y: copy + drop + store>(
         signer: &signer,
@@ -391,6 +478,12 @@ module TokenSwap {
 
     fun assert_admin(signer: &signer) {
         assert!(Signer::address_of(signer) == TokenSwapConfig::admin_address(), ERROR_SWAP_PRIVILEGE_INSUFFICIENT);
+    }
+
+    spec assert_admin {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        include TokenSwapConfig::AbortsIfAdmin;
     }
 
     public fun assert_is_token<TokenType: store>(): bool {
@@ -538,5 +631,6 @@ module TokenSwap {
 
         maybe_init_event_handle(signer);
     }
+
 }
 }

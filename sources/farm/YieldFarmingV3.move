@@ -236,6 +236,26 @@ module YieldFarmingV3 {
         ParameterModifyCapability<PoolType, AssetT> {}
     }
 
+    spec add_asset_v2 {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        let addr = Signer::address_of(account);
+        aborts_if addr != TokenSwapConfig::admin_address();
+        aborts_if exists<FarmingAsset<PoolType, AssetT>>(addr);
+        aborts_if exists<FarmingAssetExtend<PoolType, AssetT>>(addr);
+        aborts_if !exists<YieldFarmingGlobalPoolInfo<PoolType>>(addr);
+
+        let golbal_pool_info = global<YieldFarmingGlobalPoolInfo<PoolType>>(addr);
+        aborts_if golbal_pool_info.total_alloc_point + alloc_point > MAX_U128;
+
+
+        let now_seconds = Timestamp::now_seconds();
+        aborts_if now_seconds + delay > MAX_U64;
+        ensures exists<FarmingAsset<PoolType, AssetT>>(addr);
+        ensures exists<FarmingAssetExtend<PoolType, AssetT>>(addr);
+    }
+
     /// DEPRECATED
     /// call only for migrate, can call reentrance
     /// once start farm boost, can't not by call any more
@@ -277,6 +297,16 @@ module YieldFarmingV3 {
     ) acquires Farming {
         let farming = borrow_global_mut<Farming<PoolType, RewardTokenT>>(STAR::token_address());
         Token::deposit<RewardTokenT>(&mut farming.treasury_token, treasury_token);
+    }
+
+    spec deposit {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        aborts_if !exists<Farming<PoolType, RewardTokenT>>(Token::SPEC_TOKEN_TEST_ADDRESS());
+        let farming = global<Farming<PoolType, RewardTokenT>>(Token::SPEC_TOKEN_TEST_ADDRESS());
+
+        aborts_if farming.treasury_token.value + treasury_token.value > MAX_U128;
+
     }
 
     /// DEPRECATED call
@@ -348,6 +378,21 @@ module YieldFarmingV3 {
         //update global pool info total alloc point
         let golbal_pool_info = borrow_global_mut<YieldFarmingGlobalPoolInfo<PoolType>>(broker);
         golbal_pool_info.total_alloc_point = golbal_pool_info.total_alloc_point - last_alloc_point + alloc_point;
+    }
+
+    spec update_pool {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        aborts_if !exists<FarmingAsset<PoolType, AssetT>>(broker);
+        aborts_if !exists<FarmingAssetExtend<PoolType, AssetT>>(broker);
+
+        let farming_asset = global<FarmingAsset<PoolType, AssetT>>(broker);
+        let farming_asset_extend = global<FarmingAssetExtend<PoolType, AssetT>>(broker);
+        let now_seconds = Timestamp::now_seconds();
+
+        let golbal_pool_info = global<YieldFarmingGlobalPoolInfo<PoolType>>(broker);
+        ensures global<YieldFarmingGlobalPoolInfo<PoolType>>(broker).total_alloc_point == golbal_pool_info.total_alloc_point - last_alloc_point + alloc_point;
     }
 
     /// call when weight_factor change, update pool info
@@ -429,6 +474,21 @@ module YieldFarmingV3 {
 
         asset.asset_total_weight = total_weight;
         asset_ext.asset_total_amount = total_amount;
+    }
+
+    spec adjust_total_amount {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        aborts_if !exists<FarmingAsset<PoolType, AssetT>>(broker);
+        aborts_if !exists<FarmingAssetExtend<PoolType, AssetT>>(broker);
+
+        let asset = global<FarmingAsset<PoolType, AssetT>>(broker);
+        let asset_ext = global<FarmingAssetExtend<PoolType, AssetT>>(broker);
+
+        ensures global<FarmingAsset<PoolType, AssetT>>(broker).asset_total_weight == total_weight;
+        ensures global<FarmingAssetExtend<PoolType, AssetT>>(broker).asset_total_amount == total_amount;
+
+
     }
 
 
@@ -626,6 +686,18 @@ module YieldFarmingV3 {
         )
     }
 
+    spec stake_v2 {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        aborts_if !exists<FarmingAsset<PoolType, AssetT>>(broker_addr);
+        let farming_asset = global<FarmingAsset<PoolType, AssetT>>(broker_addr);
+        let farming_asset_extend = global<FarmingAssetExtend<PoolType, AssetT>>(broker_addr);
+        let now_seconds = Timestamp::now_seconds();
+        
+        aborts_if now_seconds < farming_asset.start_time;
+        aborts_if farming_asset_extend.alloc_point <= 0;
+    }
 
     /// Unstake asset from farming pool
     public fun unstake<PoolType: store, RewardTokenT: store, AssetT: store>(
@@ -711,6 +783,19 @@ module YieldFarmingV3 {
             farming_asset_extend.asset_total_amount = farming_asset_extend.asset_total_amount - asset_amount;
         };
         (staked_asset, withdraw_token)
+    }
+
+    spec unstake {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        aborts_if !exists<Farming<PoolType, RewardTokenT>>(broker);
+        aborts_if !exists<FarmingAsset<PoolType, AssetT>>(broker);
+
+        let farming = global<Farming<PoolType, RewardTokenT>>(broker);
+        let farming_asset = global<FarmingAsset<PoolType, AssetT>>(broker);
+        let now_seconds = Timestamp::now_seconds();
+        aborts_if now_seconds < farming_asset.start_time;
     }
 
     /// Harvest yield farming token from stake
@@ -864,6 +949,9 @@ module YieldFarmingV3 {
         }
     }
 
+    spec query_total_stake {
+        pragma opaque = true;
+    }
     /// Query stake weight from user staking objects.
     public fun query_stake<PoolType: store, AssetT: store>(
         account: address,
@@ -1006,6 +1094,16 @@ module YieldFarmingV3 {
         BigExponential::to_safe_u128(index_accumulated)
     }
 
+    spec calculate_harvest_index_with_asset_v2 {
+        pragma verify = true;
+        pragma opaque = true;
+        pragma aborts_if_is_partial;
+
+        aborts_if !(farming_asset.last_update_timestamp <= now_seconds);
+        aborts_if !exists<YieldFarmingGlobalPoolInfo<PoolType>>(TokenSwapConfig::admin_address());
+    }
+
+
     /// calculate user gain index
     /// if farm:  gain = (current_index - last_index) * user_asset_weight; user_asset_weight = user_amount * boost_factor;
     /// if stake: gain = (current_index - last_index) * user_asset_weight; user_asset_weight = user_amount * stepwise_multiplier;
@@ -1086,6 +1184,11 @@ module YieldFarmingV3 {
         let idx = find_idx_by_id<PoolType, AssetType>(c, id);
         assert!(Option::is_some<u64>(&idx), Errors::invalid_state(ERR_FARMING_STAKE_NOT_EXISTS));
         Vector::borrow_mut<Stake<PoolType, AssetType>>(c, Option::destroy_some<u64>(idx))
+    }
+
+    spec get_stake {
+        pragma opaque = true;
+
     }
 
     fun pop_stake<PoolType: store, AssetType: store>(

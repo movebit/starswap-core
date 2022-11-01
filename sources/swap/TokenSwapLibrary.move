@@ -17,6 +17,13 @@ module TokenSwapLibrary {
         amount_y
     }
 
+    spec quote {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if amount_x <= 0 || reserve_x <= 0 || reserve_y <= 0;
+    }
+
     public fun get_amount_in(amount_out: u128,
                              reserve_in: u128,
                              reserve_out: u128,
@@ -36,6 +43,17 @@ module TokenSwapLibrary {
         let r = SafeMath::safe_mul_div_u128(amount_out * (fee_denumerator as u128), reserve_in, denominator);
 
         r + 1
+    }
+
+    spec get_amount_in {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if amount_out <= 0 || reserve_in <= 0 || reserve_out <= 0 || fee_denumerator <= 0 || fee_numerator <= 0;
+        aborts_if fee_denumerator <= fee_numerator;
+        aborts_if reserve_out <= amount_out;
+        let denominator = (reserve_out - amount_out) * (fee_denumerator - fee_numerator);
+        aborts_if denominator > MAX_U128 || denominator == 0;
     }
 
     public fun get_amount_out(amount_in: u128,
@@ -60,12 +78,32 @@ module TokenSwapLibrary {
         r
     }
 
+    spec get_amount_out {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if amount_in <= 0 || reserve_in <= 0 || reserve_out <= 0 || fee_denumerator <= 0 || fee_numerator <= 0;
+        aborts_if fee_denumerator <= fee_numerator;
+        let amount_in_with_fee = amount_in * (fee_denumerator - fee_numerator);
+        aborts_if amount_in_with_fee > MAX_U128;
+        let denominator = reserve_in * fee_denumerator + amount_in_with_fee ;
+        aborts_if denominator > MAX_U128 || denominator == 0;
+    }
+
     public fun get_amount_in_without_fee(amount_out: u128, reserve_in: u128, reserve_out: u128): u128 {
         assert!(amount_out > 0, Errors::invalid_state(ERROR_ROUTER_PARAMETER_INVALID));
         assert!(reserve_in > 0 && reserve_out > 0, Errors::invalid_state(ERROR_ROUTER_PARAMETER_INVALID));
         let denominator = (reserve_out - amount_out);
         let r = SafeMath::safe_mul_div_u128(amount_out, reserve_in, denominator);
         r + 1
+    }
+
+    spec get_amount_in_without_fee {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if amount_out <= 0 || reserve_in <= 0 || reserve_out <= 0;
+        let denominator = reserve_out - amount_out;
     }
 
     public fun get_amount_out_without_fee(amount_in: u128, reserve_in: u128, reserve_out: u128): u128 {
@@ -76,6 +114,15 @@ module TokenSwapLibrary {
         let r = SafeMath::safe_mul_div_u128(amount_in, reserve_out, denominator);
 
         r
+    }
+
+    spec get_amount_out_without_fee {
+        pragma verify = true;
+        pragma aborts_if_is_partial = true;
+
+        aborts_if amount_in <= 0 || reserve_in <= 0 || reserve_out <= 0;
+        let denominator = reserve_in  + amount_in;
+        aborts_if denominator > MAX_U128;
     }
 }
 }

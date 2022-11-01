@@ -106,6 +106,15 @@ module TokenSwapVestarMinter {
         (MintCapability{}, TreasuryCapability{})
     }
 
+    spec init {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        
+        include SwapAdmin::TokenSwapConfig::AbortsIfAdmin;
+        aborts_if Signer::address_of(signer) != Token::SPEC_TOKEN_TEST_ADDRESS();
+        ensures exists<VestarEventHandler>(Signer::address_of(signer));
+    }
+
     public fun mint_with_cap(_signer: &signer, _id: u64, _pledge_time_sec: u64, _staked_amount: u128, _cap: &MintCapability) {
         abort Errors::invalid_argument(ERROR_FUNCTION_OBSOLETE)
     }
@@ -240,6 +249,17 @@ module TokenSwapVestarMinter {
         };
     }
 
+    spec deposit {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        let user_addr = Signer::address_of(signer);
+
+        let treasury = global<Treasury>(user_addr);
+        aborts_if !exists<VestarEventHandler>(Token::SPEC_TOKEN_TEST_ADDRESS());
+        aborts_if exists<Treasury>(user_addr) && treasury.vtoken.token.value + t.token.value > MAX_U128;
+
+    }
+
     fun withdraw(signer: &signer, amount: u128): VToken::VToken<VESTAR::VESTAR> acquires Treasury, VestarEventHandler {
         let user_addr = Signer::address_of(signer);
         assert!(exists<Treasury>(user_addr), Errors::invalid_state(ERROR_TREASURY_NOT_EXISTS));
@@ -254,6 +274,17 @@ module TokenSwapVestarMinter {
         });
 
         vtoken
+    }
+
+    spec withdraw {
+        pragma verify = true;
+        pragma aborts_if_is_strict = true;
+        let user_addr = Signer::address_of(signer);
+        aborts_if !exists<Treasury>(user_addr);
+        let treasury = global<Treasury>(user_addr);
+        aborts_if treasury.vtoken.token.value < amount;
+        aborts_if !exists<VestarEventHandler>(Token::SPEC_TOKEN_TEST_ADDRESS());
+
     }
 
     /// Add vestar mint record

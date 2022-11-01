@@ -29,6 +29,9 @@ module SafeMath {
         };
         U256::to_u128(&r_u256)
     }
+    spec safe_mul_div_u128 {
+        pragma opaque = true;
+    }
 
     public fun mul_div_u128(x: u128, y: u128, z: u128): U256 {
         if ( z == 0) {

@@ -156,6 +156,20 @@ module TokenSwapFarmBoost {
         );
     }
 
+
+    spec boost_to_farm_pool {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+
+        let user_addr = Signer::address_of(account);
+        let user_info = global<UserInfo<X, Y>>(user_addr);
+        let vestar_treasury_cap = global<VeStarTreasuryCapabilityWrapper>(SwapAdmin::TokenSwapConfig::admin_address());
+        let vestar_total_amount = global<TokenSwapVestarMinter::Treasury>(user_addr).vtoken.token.value;
+        aborts_if !(boost_amount > 0 && boost_amount <= vestar_total_amount);
+
+        ensures global<UserInfo<X, Y>>(user_addr).locked_vetoken.token.value == user_info.locked_vetoken.token.value + boost_amount;
+    }
+
     /// unboost for farm unstake
     public fun unboost_from_farm_pool<X: copy + drop + store, Y: copy + drop + store>(
         _cap: &YieldFarming::ParameterModifyCapability<PoolTypeFarmPool, Token::Token<LiquidityToken<X, Y>>>,
@@ -270,6 +284,14 @@ module TokenSwapFarmBoost {
             @SwapAdmin, new_asset_weight, last_asset_weight);
         YieldFarming::update_pool_stake_weight<PoolTypeFarmPool, Token::Token<LiquidityToken<X, Y>>>(cap,
             @SwapAdmin, account_addr, stake_id, new_weight_factor, new_asset_weight, last_asset_weight);
+    }
+
+    spec update_boost_factor {
+        pragma verify = true;
+        pragma aborts_if_is_partial;
+        
+        let user_addr = Signer::address_of(account);
+        aborts_if !exists<UserInfo<X, Y>>(user_addr);
     }
 }
 }
